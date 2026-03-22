@@ -5,40 +5,52 @@
 #include <fstream>
 #include <iostream>
 #include <unordered_map>
+#include <algorithm>
+#include <cctype>
 
 std::vector<std::string> tokenize(const std::string& line) {
     std::vector<std::string> tokens;
     std::istringstream stream(line);
     std::string token;
     while (stream >> token) {
+        for (char& c : token) {
+            c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        }
         tokens.push_back(token);
     }
     return tokens;
 }
 
+static std::string strip_comment(std::string line) {
+    size_t sc = line.find(';');
+    if (sc != std::string::npos) {
+        line = line.substr(0, sc);
+    }
+    return line;
+}
+
+static bool operand_is_memory(const std::vector<std::string>& tokens) {
+    return tokens.size() >= 2 && !tokens[1].empty() && tokens[1][0] == '$';
+}
+
 int instruction_size(const std::vector<std::string>& tokens) {
     if (tokens.empty()) return 0;
-
-    std::string opcode = tokens[0];
-    if (opcode == "nop") return 1;
-    else if (opcode == "lda") return 2;
-    else if (opcode == "sta") return 2;
-    else if (opcode == "ina") return 1;
-    else if (opcode == "cmp") return 1;
-    else if (opcode == "jmp") return 2;
-    else if (opcode == "beq") return 2;
-    else if (opcode == "hlt") return 1;
-
-    return 0;
+    bool has_operand = tokens.size() >= 2;
+    const IS* is = find_instruction(tokens[0], operand_is_memory(tokens), has_operand);
+    return is ? is->size : 0;
 }
 
 static uint8_t parse_operand(
-    const std::string& s,
+    std::string s,
     const std::unordered_map<std::string,uint8_t>& labels)
 {
-    if (std::isdigit(s[0]))
-        return static_cast<uint8_t>(std::stoi(s));
-
+    if (s.empty()) return 0;
+    if (s[0] == '$')
+        s = s.substr(1);
+    if (s.empty()) return 0;
+    if (std::isdigit(static_cast<unsigned char>(s[0])) || s[0] == '-' ||
+        (s.size() > 2 && s[0] == '0' && (s[1] == 'x' || s[1] == 'X')))
+        return static_cast<uint8_t>(std::stoi(s, nullptr, 0));
     return labels.at(s);
 }
 
@@ -47,32 +59,14 @@ static void assemble_instruction(
     const std::unordered_map<std::string,uint8_t>& labels,
     std::vector<uint8_t>& out)
 {
-    if (t[0] == "lda") {
-        out.push_back(LDA_IMM);
+    bool mem = operand_is_memory(t);
+    bool has_operand = t.size() >= 2;
+    const IS* is = find_instruction(t[0], mem, has_operand);
+    if (!is) return;
+
+    out.push_back(is->address);
+    if (is->size >= 2 && has_operand)
         out.push_back(parse_operand(t[1], labels));
-    }
-    else if (t[0] == "sta") {
-        out.push_back(STA_MEM);
-        out.push_back(parse_operand(t[1], labels));
-    }
-    else if (t[0] == "ina") {
-        out.push_back(INA);
-    }
-    else if (t[0] == "cmp") {
-        out.push_back(CMP_IMM);
-        out.push_back(parse_operand(t[1], labels));
-    }
-    else if (t[0] == "jmp") {
-        out.push_back(JMP);
-        out.push_back(parse_operand(t[1], labels));
-    }
-    else if (t[0] == "beq") {
-        out.push_back(BEQ);
-        out.push_back(parse_operand(t[1], labels));
-    }
-    else if (t[0] == "hlt") {
-        out.push_back(HLT);
-    }
 }
 
 
@@ -81,7 +75,8 @@ std::unordered_map<std::string,uint8_t> first_pass(const std::vector<std::string
     std::unordered_map<std::string,uint8_t> labels;
     uint8_t pc = 0;
 
-    for (auto& line : lines) {
+    for (const auto& raw_line : lines) {
+        std::string line = strip_comment(raw_line);
         auto tokens = tokenize(line);
         if (tokens.empty()) continue;
 
@@ -104,7 +99,8 @@ std::vector<uint8_t> second_pass(const std::vector<std::string>& lines,
 
     std::vector<uint8_t> out;
 
-    for (auto& line : lines) {
+    for (const auto& raw_line : lines) {
+        std::string line = strip_comment(raw_line);
         auto tokens = tokenize(line);
         if (tokens.empty()) continue;
 

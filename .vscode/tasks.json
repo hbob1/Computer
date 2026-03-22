@@ -10,6 +10,8 @@
                 "-I", "include",
                 "main.cpp",
                 "src/assembler.cpp",
+                "src/cpu.cpp",
+                "src/isa.cpp",
                 "-o", "program"
             ],
             "group": {
