@@ -10,7 +10,7 @@ enum Opcode : uint8_t {
 
     INA     = 0x04,
 
-    CMP_IMP = 0x05,
+    CMP_IMM = 0x05,
 
     JMP     = 0x06,
     BEQ     = 0x07,
